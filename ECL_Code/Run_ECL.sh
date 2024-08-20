@@ -12,7 +12,7 @@ if [[ -e /dev/nvidia0 ]]; then nv="--nv"; fi
 
 singularity \
     exec \
-    --nv --overlay /scratch/ECL_env/overlay-15GB-500K.ext3:ro \
+    --nv --overlay /scratch/fc1367/ECL_env/overlay-15GB-500K.ext3:ro \
     /scratch/work/public/singularity/cuda11.6.124-cudnn8.4.0.27-devel-ubuntu20.04.4.sif \
     /bin/bash -c "
 unset -f which
