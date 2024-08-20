@@ -28,7 +28,7 @@ OUTPUT_PATH = os.path.join(CURR_DIR, "output/")
 # Settings and Main
 ################################################################################
 # Number of simulations per subject
-RUN_NUM = 10
+RUN_NUM = 800
 # Size of the particle in each simulation
 PARTICLE_SIZE = 5
 # Number of MCMC steps to run for each round of rejuvenation
@@ -97,6 +97,9 @@ def main():
 			pbar.update(1)
 			
 			# if ind > 5: break
+
+	with open(OUTPUT_PATH + "finish_flag.txt", 'w') as outfile:
+		outfile.write("finished")
 
 		# model_fits = []
 		# model_accs = []
