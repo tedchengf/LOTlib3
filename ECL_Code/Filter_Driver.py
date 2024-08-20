@@ -47,7 +47,7 @@ REJUVENATION_BOUND = 0.8
 # 	hypothesis pool
 STARTING_SIZE = 100
 # The timeout limit for each filter when using multiprocessing (in seconds)
-TIMEOUT = 30
+TIMEOUT = 60
 
 def main():
 	
@@ -79,12 +79,16 @@ def main():
 
 	hash_dict = {}
 
+	total_start = time.time()
 	for block_cond in ["T2"]:
 		curr_data = all_data[all_data["Formula_Type"] == block_cond]
 
 		sub_results = []
-		pbar = tqdm(total=len(curr_data["Subname"].unique()), position=0, leave=True, desc="Sub Iter")
+		pbar = tqdm(total=len(curr_data["Subname"].unique()), position=0, leave=True, desc="Sub Iter", disable=True)
 		for ind, subname in enumerate(curr_data["Subname"].unique()):
+			start = time.time()
+			print("Subject", subname)
+			print("Started at", time.strftime("%m-%d %H:%M:%S", time.gmtime()), "; Progess:", ind+1, "/", len(curr_data["Subname"].unique()))
 			# if subname != "1116_4": continue
 			# print(subname)
 			sub_data = curr_data[curr_data["Subname"] == subname]
@@ -95,11 +99,12 @@ def main():
 			with open(OUTPUT_PATH + subname, "wb") as outfile:
 				pickle.dump(sub_results[-1][0], outfile)
 			pbar.update(1)
-			
-			# if ind > 5: break
+			end = time.time()
+			print("Ended at ", time.strftime("%m-%d %H:%M:%S", time.gmtime()))
+			print("Subject Runtime:", round(end - start, 2), "; Total Runtime:", round(end - total_start, 2))
+			print()
 
-	with open(OUTPUT_PATH + "finish_flag.txt", 'w') as outfile:
-		outfile.write("finished")
+			# if ind > 5: break
 
 		# model_fits = []
 		# model_accs = []
@@ -206,8 +211,9 @@ def run_subject(sub_data, hash_dict = None, run_num = 100, particle_size = 5, MC
 	# Parallal Application with Timeout
 	global CLOSURE
 	CLOSURE = [h0, training_data, testing_data]
-	pbar = tqdm(total = run_num, position=1, leave=False, desc="Run iter")
+	pbar = tqdm(total = run_num, position=1, leave=False, desc="Run iter", disable=True)
 	results = []
+	timeout_counter = 0
 	if log == False:
 		target_func = single_filter
 	else:
@@ -225,7 +231,9 @@ def run_subject(sub_data, hash_dict = None, run_num = 100, particle_size = 5, MC
 				except StopIteration:
 					curr_pool_check = False
 				except TimeoutError:
-					print("timeout")
+					print("	timeout at", time.strftime("%m-%d %H:%M:%S", time.gmtime()))
+					timeout_counter += 1
+	print("Total Timeout:", timeout_counter)
 
 	# # Parallal Application
 	# global CLOSURE
