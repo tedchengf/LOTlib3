@@ -18,6 +18,6 @@ singularity \
 unset -f which
 source /opt/apps/lmod/lmod/init/sh
 source /ext3/env.sh
-conda activate
+conda activate base
 ${args}
-"
+"exit()
