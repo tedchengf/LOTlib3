@@ -47,7 +47,7 @@ REJUVENATION_BOUND = 0.8
 # 	hypothesis pool
 STARTING_SIZE = 100
 # The timeout limit for each filter when using multiprocessing (in seconds)
-TIMEOUT = 60
+TIMEOUT = 30
 
 def main():
 	
