@@ -80,7 +80,7 @@ def main():
 	hash_dict = {}
 
 	total_start = time.time()
-	for block_cond in ["T2"]:
+	for block_cond in ["B1"]:
 		curr_data = all_data[all_data["Formula_Type"] == block_cond]
 
 		sub_results = []

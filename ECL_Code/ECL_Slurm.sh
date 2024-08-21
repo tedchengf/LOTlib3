@@ -9,8 +9,6 @@
 #SBATCH --mail-user=fc1367@nyu.edu   # Email address
 #SBATCH --mail-type=END               # Send an email when all the instances of this job are completed
 
-module purge                          # unload all currently loaded modules in the environment
-
 /vast/fc1367/ECL/ECL_Code/Run_ECL.sh
 conda activate 
 python3 /vast/fc1367/ECL/ECL_Code/Filter_Driver.py
