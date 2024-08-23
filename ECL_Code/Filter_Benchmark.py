@@ -6,7 +6,9 @@ import pandas as pd
 pd.options.mode.chained_assignment = None  # default='warn'
 from pebble import ProcessPool
 from concurrent.futures import TimeoutError
+from sklearn.metrics import log_loss
 import matplotlib.pyplot as plt
+import seaborn
 from tqdm import tqdm
 import itertools
 import pickle
@@ -22,11 +24,11 @@ CURR_DIR = os.path.dirname(__file__)
 HASH_DICT_PATH = os.path.join(CURR_DIR, "input/hash_dict")
 SUB_DATA_DIR = os.path.join(CURR_DIR, "input/rsps/")
 SUB_LOG_PATH = os.path.join(CURR_DIR, "input/Sub_log.txt")
-OUTPUT_PATH = os.path.join(CURR_DIR, "output/")
+OUTPUT_PATH = os.path.join(CURR_DIR, "output/0221_7/")
 
-DISABLE_PBAR = True
-PRINT_TARGET = sys.stdout               # Set to print to stdout
-# PRINT_TARGET = open(os.devnull, 'w')  # Set to silence prints
+DISABLE_PBAR = False
+# PRINT_TARGET = sys.stdout               # Set to print to stdout
+PRINT_TARGET = open(os.devnull, 'w')  # Set to silence prints
 
 ################################################################################
 # Settings and Main
@@ -41,89 +43,31 @@ MCMC_STEPS = 4
 MEMORY_LIMIT = None
 # The rate of decay for previous trials. The discounting function is 
 # 	e^(-DECARY_RATE)
-DECAY_RATE = 0.15
+DECAY_RATE = 4
 # The number of trial to skip before the discounting function is applied
 DECAY_BUFFER = 0
 # The likelihood correctness of each particle beneath which rejunivation will
 # 	be applied 
-REJUVENATION_BOUND = 0.8
+REJUVENATION_BOUND = 0
 # The number of steps of metropolis hasting used to generate the starting
 # 	hypothesis pool
-STARTING_SIZE = 100
+STARTING_SIZE = 50
 # The timeout limit for each filter when using multiprocessing (in seconds)
-TIMEOUT = 30
+TIMEOUT = 600
 
 def main():
-	
-	all_data = ECL_Processing.process_data(SUB_DATA_DIR, "Sub_resp.csv", SUB_LOG_PATH)
 
-	# test_rules = generate_rules(all_data, steps = 5000000)
-	# with open("./test_rules", "wb") as outfile:
-	# 	pickle.dump(test_rules, outfile)
+	run_name = input("Current Run Name: ")
 
-	# with open("./test_rules", "rb") as infile:
-	# 	rules = pickle.load(infile)
-	# for block_cond in ["T2", "B1", "B2", "S1"]:
-	# 	fit_sub_finalrules(all_data, rules, block_cond)
+	# sub_dir = "/0221_3/" # B1 Subject
+	sub_dir = "/0221_7/" # T2 Subject
 
-	# for cond in ["B1", "B2", "S1"]:
-	# 	cond_results = reanalyze_results(all_data, cond)
-	# 	print("Fits:", np.average(cond_results["Fits"]))
-	# 	print("Perfs:", np.average(cond_results["Perf"]))
 
-	with open(HASH_DICT_PATH, "rb") as infile:
-		hash_dict = pickle.load(infile)
-	
-	# cond_results = reanalyze_results(all_data, "T1", res_dir = "./test results/", hash_dict=hash_dict)
-	# print("Fits:", np.average(cond_results["Fits"]))
-	# print("Perfs:", np.average(cond_results["Perf"]))
+	sub_data = ECL_Processing.read_file("/Users/feng/Desktop/ECL_Experiment2/rsps" + sub_dir, "Sub_resp.csv", 1)
+	outcomes, sub_pred, training_data, testing_data = structure_subdata(sub_data)
+	sub_results = run_subject(sub_data, training_data, testing_data, run_num = RUN_NUM, particle_size = PARTICLE_SIZE, MCMC_steps = MCMC_STEPS, memory_limit = MEMORY_LIMIT, starting_size = STARTING_SIZE, log = False)
+	result_analysis(sub_results, outcomes, sub_pred, testing_data, run_name)
 
-	# for k in hash_dict:
-	# 	print(k, hash_dict[k])
-
-	total_start = time.time()
-	for block_cond in ["B2", "S1"]:
-		curr_data = all_data[all_data["Formula_Type"] == block_cond]
-
-		sub_results = []
-		pbar = tqdm(total=len(curr_data["Subname"].unique()), position=0, leave=True, desc="Sub Iter", disable=DISABLE_PBAR)
-		for ind, subname in enumerate(curr_data["Subname"].unique()):
-			start = time.time()
-			print("Subject", subname, file = PRINT_TARGET)
-			print("Started at", time.strftime("%m-%d %H:%M:%S", time.gmtime()), "; Progess:", ind+1, "/", len(curr_data["Subname"].unique()), file = PRINT_TARGET)
-			# if subname != "1116_4": continue
-			# print(subname)
-			sub_data = curr_data[curr_data["Subname"] == subname]
-			# curr_result = run_subject_nonpar(sub_data, hash_dict=hash_dict, run_num = RUN_NUM, particle_size = PARTICLE_SIZE,MCMC_steps = MCMC_STEPS, memory_limit = MEMORY_LIMIT, starting_size = STARTING_SIZE, log = True)
-			# with open("./run_0806/" + subname, "wb") as outfile:
-			# 	pickle.dump(curr_result, outfile)
-			sub_results.append(run_subject(sub_data, hash_dict=hash_dict, run_num = RUN_NUM, particle_size = PARTICLE_SIZE,MCMC_steps = MCMC_STEPS, memory_limit = MEMORY_LIMIT, starting_size = STARTING_SIZE, log = True))
-			with open(OUTPUT_PATH + subname, "wb") as outfile:
-				pickle.dump(sub_results[-1][0], outfile)
-			pbar.update(1)
-			end = time.time()
-			print("Ended at ", time.strftime("%m-%d %H:%M:%S", time.gmtime()), file = PRINT_TARGET)
-			print("Subject Runtime:", round(end - start, 2), "; Total Runtime:", round(end - total_start, 2), file = PRINT_TARGET)
-			print("", file = PRINT_TARGET)
-
-			# if ind > 5: break
-
-		# model_fits = []
-		# model_accs = []
-		# for sub_res in sub_results:
-		# 	run_results, outcomes, subpreds = sub_res
-		# 	for run_res in run_results:
-		# 		model_fits.append(np.sum(np.square(np.subtract(run_res["testing"], subpreds[160:]))))
-		# 		model_accs.append(np.sum(np.square(np.subtract(run_res["testing"], outcomes[160:]))))
-		# print(block_cond)
-		# print("Model Fits:", np.average(model_fits))
-		# print("Model Perfs:", np.average(model_accs))
-
-	with open(HASH_DICT_PATH, "wb") as outfile:
-		pickle.dump(hash_dict, outfile)
-
-	# sub_data = ECL_Processing.read_file("/Users/feng/Desktop/ECL_Experiment2/rsps/0229_1/", "Sub_resp.csv", 1)
-	# sub_results, outcomes, sub_pred = run_subject(sub_data, run_num = RUN_NUM, particle_size = PARTICLE_SIZE,MCMC_steps = MCMC_STEPS, memory_limit = MEMORY_LIMIT, starting_size = STARTING_SIZE, log = True)
 	# with open("./0221_3", "wb") as outfile:
 	# 	pickle.dump(sub_results, outfile)
 
@@ -197,23 +141,24 @@ def structure_subdata(sub_data):
 	return outcomes, sub_pred, training_data, testing_data
 
 # Main function for running a single subject in parallel
-def run_subject(sub_data, hash_dict = None, run_num = 100, particle_size = 5, MCMC_steps = 2, memory_limit = 5, starting_size = 100, rejuvenation_bound = 0.8, log = False):
-
-	outcomes, sub_pred, training_data, testing_data = structure_subdata(sub_data)
+def run_subject(sub_data, training_data, testing_data, hash_dict = None, run_num = 100, particle_size = 5, MCMC_steps = 2, memory_limit = 5, starting_size = 100, rejuvenation_bound = 0.8, log = False):
 
 	# Init Hypotheses
+	pbar = tqdm(total = starting_size, leave=False, desc="Start iter", disable=True)
 	h_start = ECL_Hypothesis(GMR)
 	top = TopN(N=starting_size)
 	sampler = MetropolisHastingsSampler(h_start, [training_data[10]])
+	# sampler = MetropolisHastingsSampler(h_start, testing_data)
 	for i in range(starting_size):
 		h = sampler.__next__()
 		top << h
+		pbar.update(1)
 	h0 = [h for h in top]
 
 	# Parallal Application with Timeout
 	global CLOSURE
 	CLOSURE = [h0, training_data, testing_data]
-	pbar = tqdm(total = run_num, position=1, leave=False, desc="Run iter", disable=DISABLE_PBAR)
+	pbar = tqdm(total = run_num, leave=False, desc="Run iter")
 	results = []
 	timeout_counter = 0
 	if log == False:
@@ -233,22 +178,7 @@ def run_subject(sub_data, hash_dict = None, run_num = 100, particle_size = 5, MC
 				except StopIteration:
 					curr_pool_check = False
 				except TimeoutError:
-					print("	timeout at", time.strftime("%m-%d %H:%M:%S", time.gmtime()), file = PRINT_TARGET)
 					timeout_counter += 1
-	print("Total Timeout:", timeout_counter, file = PRINT_TARGET)
-
-	# # Parallal Application
-	# global CLOSURE
-	# CLOSURE = [h0, training_data, testing_data]
-	# with Pool() as pool:
-	# 	if log == False:
-	# 		results = list(tqdm(pool.imap_unordered(single_filter, [(particle_size, MCMC_steps, memory_limit, rejuvenation_bound)]*run_num), total = run_num, position=1, leave=False, desc="Run iter"))
-	# 	else:
-	# 		results = list(tqdm(pool.imap_unordered(single_filter_logged, [(particle_size, MCMC_steps, memory_limit, rejuvenation_bound)]*run_num), total = run_num, position=1, leave=False, desc="Run iter"))
-	# 		# print(results[0]["particles"])
-	# 		# print("")
-	# 		# print(np.array(results[0]["hist_particles"]))
-	# 		# print(np.array(results[0]["hist_particles"]).shape)
 
 	if hash_dict is not None:
 		for ind in range(len(results)):
@@ -260,7 +190,7 @@ def run_subject(sub_data, hash_dict = None, run_num = 100, particle_size = 5, MC
 			curr_result["hist_particles"] = new_hist
 
 	# result_analysis(results, outcomes, sub_pred, testing_data)
-	return results, outcomes, sub_pred
+	return results
 
 # Function for running a single subject. Mainly for testing
 def run_subject_nonpar(sub_data, hash_dict = None, run_num = 100, particle_size = 5, MCMC_steps = 2, memory_limit = 5, starting_size = 100, rejuvenation_bound = 0.8, log = False):
@@ -335,12 +265,16 @@ def single_filter_logged(args):
 ################################################################################
 # Analyze Results
 ################################################################################
-def result_analysis(results, outcomes, sub_pred, testing_data):
+def result_analysis(results, outcomes, sub_pred, testing_data, run_name):
+	outfile = open(OUTPUT_PATH + run_name + ".txt", 'w')
 	training_perfs = []
 	training_fits = []
+	training_fits_per = []
 	testing_perfs = []
 	testing_fits = []
+	testing_fits_per = []
 	alt_training_fits = []
+	testing_perfs_per = []
 	rule_distributions = {}
 	for r in results:
 		for p in r["particles"]:
@@ -348,27 +282,53 @@ def result_analysis(results, outcomes, sub_pred, testing_data):
 				rule_distributions[p] += 1
 			else:
 				rule_distributions.update({p: 1})
-		training_perfs.append(np.sum(np.square(np.subtract(r["training"], outcomes[:160]))))
-		training_fits.append(np.sum(np.square(np.subtract(r["training"], sub_pred[:160]))))
-		testing_perfs.append(np.sum(np.square(np.subtract(r["testing"], outcomes[160:]))))
-		testing_fits.append(np.sum(np.square(np.subtract(r["testing"], sub_pred[160:]))))
-		alt_training_fits.append(np.sum(np.square(np.subtract(r["training"][80:], sub_pred[80:160]))))
+		# training_perfs.append(np.sum(np.square(np.subtract(r["training"], outcomes[:160]))))
+		# training_fits.append(np.sum(np.square(np.subtract(r["training"],
+		# sub_pred[:160]))))
+		training_perfs.append(log_loss(outcomes[:160], r["training"]))
+		training_fits.append(log_loss(sub_pred[:160],r["training"] ))
+		training_fits_per.append(round(percentage_fit(r["training"], sub_pred[:160]), 2))
+		# testing_perfs.append(np.sum(np.square(np.subtract(r["testing"],
+		# outcomes[160:]))))
+		testing_perfs.append(log_loss(outcomes[160:], r["testing"]))
+		testing_perfs_per.append(round(percentage_fit(r["testing"], outcomes[160:]), 2))
+		# testing_fits.append(np.sum(np.square(np.subtract(r["testing"],
+		# sub_pred[160:]))))
+		testing_fits.append(log_loss(sub_pred[160:], r["testing"]))
+		testing_fits_per.append(round(percentage_fit(r["testing"], sub_pred[160:]), 2))
+		# alt_training_fits.append(np.sum(np.square(np.subtract(r["training"][80:],
+		# sub_pred[80:160]))))
+		alt_training_fits.append(log_loss(sub_pred[80:160], r["training"][80:]))
 	
+	outfile.write("Run " + run_name + "\n\n")
+	outfile.write("Params:\n")
+	outfile.write("- Run Num: " + str(RUN_NUM) + "\n")
+	outfile.write("- Particle Size: " + str(PARTICLE_SIZE) + "\n")
+	outfile.write("- MCMC Steps: " + str(MCMC_STEPS) + "\n")
+	outfile.write("- Decay Rate: " + str(DECAY_RATE) + "\n")
+	outfile.write("- Rejuvenation Bound: " + str(REJUVENATION_BOUND) + "\n")
+	outfile.write("- Starting Size: " + str(STARTING_SIZE) + "\n")
+	outfile.write("\n")
+
+	outfile.write("Run Performances \n")
+	outfile.write("- training accuracy: " + str(round(np.average(training_perfs), 2)) + "\n")
+	outfile.write("- training fit loss: " + str(round(np.average(training_fits), 2)) + "\n")
+	outfile.write("- training fit %: " + str(round(np.average(training_fits_per), 2)) + "\n")
+	outfile.write("- testing accuracy: " + str(round(np.average(testing_perfs), 2)) + "\n")
+	outfile.write("- testing fit loss: " + str(round(np.average(testing_fits), 2)) + "\n")
+	outfile.write("- testing fit %: " + str(round(np.average(testing_fits_per), 2)) + "\n")
+
 	# General Rule Distribution
-	print("Particle Distribution")
-	freqs, rule_freqs, rules = simplify_rules(rule_distributions, testing_data)
-	print(freqs)
-	print(rule_freqs.flatten())
-	print(rules.flatten())
-
-
-	rank_rule_dist(rule_distributions, testing_data)
-
-	print("------------------------------------------------------------------------")
-	print()
+	outfile.write("\n\n================================================================================\n")
+	outfile.write("\nParticle Distribution\n\n")
+	freqs, group_freqs, group_rules, group_outcomes = simplify_rules(rule_distributions, testing_data, group_length=3)
+	print_rules(freqs, group_freqs, group_rules, group_outcomes, outfile, targets = [outcomes[160:],], target_names = ["Ground Truth",])
+	all_fit_dist = rule_dist_fit(freqs, group_outcomes, outcomes[160:])
+	# rank_rule_dist(rule_distributions, testing_data, outfile)
 	
 	# Best Particle during Training
-	print("Best Training Particle")
+	outfile.write("\n\n================================================================================\n")
+	outfile.write("\nBest Training Particle\n\n")
 	# best_train = np.argmin(alt_training_fits)
 	# train_result = results[best_train]["particles"]
 	# train_distribution = count_rules(train_result, {})
@@ -379,40 +339,86 @@ def result_analysis(results, outcomes, sub_pred, testing_data):
 		train_distribution = count_rules(results[ind]["particles"], train_distribution)
 	# train_result = results[best_train]["particles"]
 	# train_distribution = count_rules(train_result, {})
-	rank_rule_dist(train_distribution, testing_data)
 
-	print("------------------------------------------------------------------------")
-	print()
+	freqs, group_freqs, group_rules, group_outcomes = simplify_rules(train_distribution, testing_data, group_length=3)
+	print_rules(freqs, group_freqs, group_rules, group_outcomes, outfile, targets = [outcomes[160:]], target_names = ["Ground Truth",])
+	# rank_rule_dist(train_distribution, testing_data, outfile)
 
 	# Best Particle during Testing
-	print("Best Testing Particle")
+	outfile.write("\n\n================================================================================\n")
+	outfile.write("\nBest Testing Particle\n\n")
 	best_test = np.argmin(testing_fits)
 	test_result = results[best_test]["particles"]
 	test_distribution = count_rules(test_result, {})
-	rank_rule_dist(test_distribution, testing_data)
+
+	freqs, group_freqs, group_rules, group_outcomes = simplify_rules(test_distribution, testing_data, group_length=3)
+	print_rules(freqs, group_freqs, group_rules, group_outcomes, outfile, targets = [outcomes[160:],], target_names = ["Ground Truth",])
+	# rank_rule_dist(test_distribution, testing_data, outfile)
 
 	sequential_fits = []
 	sequential_perfs = []
 	for r in results:
-		training_fits = np.square(np.subtract(r["training"], sub_pred[:160]))
-		testing_fits = np.square(np.subtract(r["testing"], sub_pred[160:]))
-		curr_fits = np.concatenate([training_fits, testing_fits])
-		curr_fits = segment_timewindows(curr_fits, 40, 5)
+		# training_perfs = trial_logloss(outcomes[:160], r["training"])
+		# curr_perfs, anchors = segment_timewindows(training_perfs, 40, 1)
+		# sequential_perfs.append(curr_perfs)
+		# training_fits = np.square(np.subtract(r["training"], sub_pred[:160]))
+		# testing_fits = np.square(np.subtract(r["testing"], sub_pred[160:]))
+		# curr_fits = np.concatenate([training_fits, testing_fits])
+		# curr_fits, anchors = segment_timewindows(curr_fits, 40, 1)
 		training_perfs = np.square(np.subtract(r["training"], outcomes[:160]))
 		testing_perfs = np.square(np.subtract(r["testing"], outcomes[160:]))
-		curr_perfs = np.concatenate([training_perfs, testing_perfs])
-		curr_perfs = segment_timewindows(curr_perfs, 40, 5)
-		sequential_fits.append(curr_fits)
+		curr_perfs = training_perfs
+		# curr_perfs = np.concatenate([training_perfs, testing_perfs])
+		curr_perfs, anchors = segment_timewindows(curr_perfs, 40, 1)
+		# sequential_fits.append(curr_fits)
 		sequential_perfs.append(curr_perfs)
 	
-	fig, (ax1, ax2) = plt.subplots(2,1, figsize = (15,15))
-	for sf in sequential_fits:
-		ax1.plot(sf, alpha = 0.5)
-		ax1.set_title("Particle Fits")
+	sequential_perfs = np.array(sequential_perfs)
+	heap_map = temporal_heatmap(sequential_perfs, 50, (0, 1))
+
+	fig, (ax1, ax2) = plt.subplots(2,1, figsize = (15,13))
+	# for sf in sequential_fits:
+	# 	ax1.plot(sf, alpha = 0.5)
+	# ax1.set_title("Particle Fits")
+	seaborn.histplot(testing_perfs_per, bins = 20, ax = ax1, stat = 'percent')
+	ax1.set_xlim(0,100)
+	ax1.set_ylim(0,100)
+	ax1.set_title("Particles Testing Accuracy (%)")
+	xs = []
+	ys = []
+	ax2.imshow(heap_map, cmap = "magma", extent = (anchors[0], anchors[-1], 0, 1), aspect = 'auto')
 	for sp in sequential_perfs:
-		ax2.plot(sp, alpha = 0.5)
-		ax2.set_title("Particle Perfs")
-	fig.savefig("Indexs.png", format = "png", dpi = 500, transparent = True)
+		ax2.plot(anchors, sp, alpha = 0.05, c = "white")
+		xs += list(anchors)
+		ys += list(sp)
+	# seaborn.histplot(x = xs, y=ys, cmap = "magma")
+	ax2.set_ylim(0, 1)
+	ax2.set_xlabel("trials")
+	ax2.set_ylabel("Loss")
+	ax2.set_title("Particle Perfs")
+	fig.savefig(OUTPUT_PATH + run_name + " Indexs.png", format = "png", dpi = 500, transparent = True)
+	
+	outfile.close()
+	return
+
+def temporal_heatmap(data, num_bin, data_range):
+	bin_range = (data_range[1] - data_range[0])/num_bin
+	results = []
+	for ind in range(data.shape[1]):
+		curr_data = data[:, ind]
+		hist_data, hist_intervals = np.histogram(curr_data, bins = num_bin, range = data_range, density = True)
+		results.append(np.flip(hist_data))
+	results = np.array(results)
+	return results.transpose()
+
+def trial_logloss(target, prediction):
+	target = np.array(target)
+	prediction = np.array(prediction)
+	# print(prediction)
+	print(sum(prediction*0.97 > 1))
+	# print(sum(prediction < 0))
+	# print()
+	return -(np.multiply(target, np.log(1-(1-prediction*0.97))) + np.multiply(1-target, np.log(1-prediction*0.97)))
 
 def group_hypotheses(hypotheses, data):
 	# if len(hypotheses) == 1:
@@ -439,27 +445,52 @@ def group_hypotheses(hypotheses, data):
 					if math.isclose(coef_mat[s_ind][o_ind], 1):
 						h_flags[o_ind] = flag_num
 			flag_num += 1
-	return(h_flags)
+	return h_flags, h_outcomes
 
 def simplify_rules(rules_dict, target_data, group_length = 1):
 	rules = np.array(list(rules_dict.keys()))
 	freqs = np.array(list(rules_dict.values()))
-	group_flags = group_hypotheses(rules, target_data)
+	group_flags, h_outcomes = group_hypotheses(rules, target_data)
 	all_freqs = []
 	group_rules = []
 	group_freqs = []
+	group_outcomes = []
 	for flag in range(1, int(max(group_flags))+1):
 		curr_rules = rules[group_flags == flag]
 		curr_freqs = freqs[group_flags == flag]
+		curr_outcome = h_outcomes[group_flags == flag][0]
 		group_order = np.flip(np.argsort(curr_freqs))
 		all_freqs.append(np.sum(curr_freqs))
 		max_ind = min(group_length, len(curr_freqs))
 		group_freqs.append(curr_freqs[group_order][:max_ind])
 		group_rules.append(curr_rules[group_order][:max_ind])
+		group_outcomes.append(curr_outcome)
+	group_outcomes = np.array(group_outcomes, dtype = object)
 
 	all_order = np.flip((np.argsort(all_freqs)))
-	return np.take(all_freqs, all_order, axis = 0), np.take(group_freqs, all_order, axis = 0), np.take(group_rules, all_order, axis = 0)
+	return np.take(all_freqs, all_order, axis = 0), np.take(group_freqs, all_order, axis = 0), np.take(group_rules, all_order, axis = 0), np.take(group_outcomes, all_order, axis = 0)
 
+def print_rules(all_freqs, group_freqs, group_rules, group_outcomes, outfile, targets = [], target_names = []):
+	outfile.write("--------------------------------------------------------------------------------\n")
+	for ind in range(len(all_freqs)):
+		outfile.write("Group Freq : " + str(all_freqs[ind]) + " (" + str(round(all_freqs[ind]/sum(all_freqs) * 100, 2)) +"%)\n")
+		if len(targets) > 0:
+			curr_outcomes = group_outcomes[ind]
+			for t_name, t_data in zip(target_names, targets):
+				outfile.write("Fit with " + t_name + " : " + str(round(percentage_fit(t_data, curr_outcomes), 2)) + "%\n")
+		curr_freqs = group_freqs[ind]
+		curr_rules = group_rules[ind]
+		for f, r in zip(curr_freqs, curr_rules):
+			outfile.write("- " + str(f) + " : " + str(r) + "\n")
+		outfile.write("-------------------------------------------------------------------------------\n")
+	return
+
+def rule_dist_fit(all_freqs, group_outcomes, target):
+	all_fit = []
+	for ind in range(len(all_freqs)):
+		curr_fit = round(percentage_fit(group_outcomes[ind], target))
+		all_fit += [curr_fit]*all_freqs[ind]
+	return all_fit
 
 def rank_rule_dist(rules_dict, target_data, outfile):
 	rules = np.array(list(rules_dict.keys()))
@@ -492,17 +523,21 @@ def count_rules(results, r_dist):
 
 def segment_timewindows(target_arr, width, padding):
 	transformed_arr = []
+	anchors = []
 	tw_start = 0
 	tw_end = tw_start + width
 	while tw_start < len(target_arr):
-		if tw_end > len(target_arr):
+		anchors.append(tw_end)
+		if tw_end >= len(target_arr):
 			transformed_arr.append(np.average(target_arr[tw_start:]))
+			break
 		else:
 			transformed_arr.append(np.average(target_arr[tw_start:tw_end]))
-		if tw_end > len(target_arr): break
+		# if tw_end > len(target_arr): break
 		tw_start += padding
 		tw_end += padding
-	return np.array(transformed_arr)
+	anchors[-1] = len(target_arr)
+	return np.array(transformed_arr), anchors
 
 def condense_particles(particles, hash_dict):
 	c_particles = []
@@ -518,7 +553,6 @@ def reconstruct_particles(particles, hash_dict):
 	for p in particles:
 		r_particles.append(hash_dict[p])
 	return r_particles
-
 
 def reanalyze_results(all_data, target_condition, res_dir = "./Filter Results/", hash_dict = None):
 	curr_data = all_data[all_data["Formula_Type"] == target_condition]
@@ -616,7 +650,7 @@ def fit_sub_finalrules(data, rules, target_condition):
 def percentage_fit(list1, list2):
 	list1 = np.array(list1, dtype=int)
 	list2 = np.array(list2, dtype=int)
-	return 1 - (np.sum(np.abs(list1 - list2))/len(list1))
+	return (1 - (np.sum(np.abs(list1 - list2))/len(list1)))*100
 
 if __name__ == "__main__":
 	main()
